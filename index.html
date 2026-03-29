@@ -557,6 +557,27 @@ html,body{height:100%;height:-webkit-fill-available;overflow:hidden;background:v
   </div>
   <div class="slide-body">
 
+    <!-- GOOGLE DRIVE SYNC -->
+    <div class="backup-section">
+      <div class="s-section-title">☁️ Google Drive 자동 동기화</div>
+      <div class="backup-card">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+          <div id="driveStatusDot" style="width:10px;height:10px;border-radius:50%;background:var(--border2);flex-shrink:0;"></div>
+          <div id="driveStatusText" style="font-size:13px;color:var(--text2);">연결 안 됨</div>
+          <div style="margin-left:auto;display:flex;gap:7px;">
+            <button class="btn btn-primary" id="driveLoginBtn" onclick="driveSignIn()" style="font-size:12px;display:none;">🔑 로그인</button>
+            <button class="btn btn-ghost" id="driveLogoutBtn" onclick="driveSignOut()" style="font-size:12px;display:none;">로그아웃</button>
+          </div>
+        </div>
+        <div id="driveUserInfo" style="font-size:11px;color:var(--text3);margin-bottom:10px;display:none;"></div>
+        <div style="display:flex;gap:7px;flex-wrap:wrap;">
+          <button class="btn btn-primary" onclick="driveSave()" id="driveSaveBtn" style="font-size:12px;display:none;">☁️ 지금 저장</button>
+          <button class="btn btn-ghost" onclick="driveLoad()" id="driveLoadBtn" style="font-size:12px;display:none;">⬇ 불러오기</button>
+        </div>
+        <div id="driveSyncInfo" style="font-size:11px;color:var(--text3);margin-top:8px;"></div>
+      </div>
+    </div>
+
     <!-- EXPORT -->
     <div class="backup-section">
       <div class="s-section-title">📤 내보내기 (Export)</div>
@@ -610,6 +631,17 @@ html,body{height:100%;height:-webkit-fill-available;overflow:hidden;background:v
 </div>
 
 <div class="toast" id="toast"></div>
+
+<!-- 커스텀 Confirm 모달 (WebView confirm() 차단 대응) -->
+<div id="confirmOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:2000;align-items:center;justify-content:center;">
+  <div style="background:var(--surface);border:1px solid var(--border2);border-radius:16px;width:82vw;max-width:320px;padding:22px 20px 16px;box-shadow:0 8px 32px rgba(0,0,0,.6);">
+    <div id="confirmMsg" style="font-size:15px;font-weight:600;line-height:1.5;margin-bottom:18px;color:var(--text);"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <button onclick="confirmResolve(false)" style="padding:9px 18px;border-radius:8px;border:1px solid var(--border2);background:var(--surface3);color:var(--text2);font-size:14px;font-family:'Noto Sans KR',sans-serif;cursor:pointer;">취소</button>
+      <button id="confirmOkBtn" onclick="confirmResolve(true)" style="padding:9px 18px;border-radius:8px;border:none;background:var(--red);color:#fff;font-size:14px;font-weight:600;font-family:'Noto Sans KR',sans-serif;cursor:pointer;">확인</button>
+    </div>
+  </div>
+</div>
 
 <script>
 // ══════════════════════════════════════════════
@@ -1074,9 +1106,10 @@ function closeModal(){
 }
 function handleMemoOverlay(e){if(e.target===document.getElementById("memoOverlay"))closeModal();}
 
-function deleteMemoFromModal(){
+async function deleteMemoFromModal(){
   if(editingId===null||editingId===undefined) return;
-  if(!confirm("이 메모를 삭제할까요?")) return;
+  const ok = await appConfirm("이 메모를 삭제할까요?", "🗑 삭제");
+  if(!ok) return;
   const delId=String(editingId);
   memos=memos.filter(x=>String(x.id)!==delId);
   save.memos();
@@ -1085,8 +1118,9 @@ function deleteMemoFromModal(){
   refreshAfterChange();
   showToast("🗑 메모가 삭제되었습니다.");
 }
-function deleteMemo(id){
-  if(!confirm("이 메모를 삭제할까요?")) return;
+async function deleteMemo(id){
+  const ok = await appConfirm("이 메모를 삭제할까요?", "🗑 삭제");
+  if(!ok) return;
   const delId=String(id);
   memos=memos.filter(x=>String(x.id)!==delId);
   save.memos();
@@ -1227,10 +1261,11 @@ function addMember(){
   save.members(); showToast(`✅ ${name} 의원 추가됨`);
   renderMembersSettings(); renderDrawer(); renderHome();
 }
-function deleteMember(id){
+async function deleteMember(id){
   const m=MEMBERS.find(x=>x.id===id);
   const cnt=memos.filter(x=>x.memberId===id).length;
-  if(!confirm(`${m.name} 의원${cnt>0?` 및 관련 메모 ${cnt}건을`:"을"} 삭제할까요?`))return;
+  const ok1 = await appConfirm(`${m.name} 의원${cnt>0?` 및 관련 메모 ${cnt}건을`:"을"} 삭제할까요?`, "🗑 삭제");
+  if(!ok1)return;
   memos=memos.filter(x=>x.memberId!==id);
   MEMBERS=MEMBERS.filter(x=>x.id!==id);
   save.all(); showToast(`🗑 ${m.name} 의원 삭제됨`);
@@ -1345,10 +1380,11 @@ function addCategory(){
   save.categories(); showToast(`✅ "${name}" 항목 추가됨`);
   renderCategoriesSettings(); refreshAfterChange();
 }
-function deleteCat(id){
+async function deleteCat(id){
   const cat=CATEGORIES.find(c=>c.id===id);
   const cnt=memos.filter(x=>x.category===cat.name).length;
-  if(!confirm(`"${cat.name}" 항목${cnt>0?` 및 관련 메모 ${cnt}건을`:"을"} 삭제할까요?`))return;
+  const ok2 = await appConfirm(`"${cat.name}" 항목${cnt>0?` 및 관련 메모 ${cnt}건을`:"을"} 삭제할까요?`, "🗑 삭제");
+  if(!ok2)return;
   memos=memos.filter(x=>x.category!==cat.name);
   CATEGORIES=CATEGORIES.filter(c=>c.id!==id);
   save.categories();save.memos();
@@ -1439,11 +1475,12 @@ function readImportFile(file){
   r.onload=e=>{try{window.receiveImportData(e.target.result);}catch{showToast("⚠ 파일 읽기 오류");}};
   r.readAsText(file);
 }
-function confirmImport(){
+async function confirmImport(){
   if(!importData){showToast("⚠ 파일을 먼저 선택하세요.");return;}
   const mode=document.querySelector("input[name='importMode']:checked")?.value||"merge";
   if(mode==="overwrite"){
-    if(!confirm("⚠ 현재 모든 데이터가 삭제되고 백업으로 교체됩니다.\n계속할까요?"))return;
+    const ok3 = await appConfirm("⚠ 현재 모든 데이터가 삭제되고\n백업으로 교체됩니다. 계속할까요?", "덮어쓰기", true);
+  if(!ok3)return;
     if(importData.members)MEMBERS.splice(0,MEMBERS.length,...importData.members);
     if(importData.categories)CATEGORIES.splice(0,CATEGORIES.length,...importData.categories);
     if(importData.memos)memos.splice(0,memos.length,...importData.memos);
@@ -1538,7 +1575,8 @@ async function dlFile(id){
   showToast("⬇ "+f.name);
 }
 async function delFile(id,memoId){
-  if(!confirm("첨부 자료를 삭제할까요?"))return;
+  const ok4 = await appConfirm("첨부 자료를 삭제할까요?", "🗑 삭제");
+  if(!ok4)return;
   await dbDelete(id);renderExistingFiles(memoId);showToast("🗑 삭제됨");
 }
 function fIcon(type){
@@ -1687,7 +1725,229 @@ function calMove(dir){
   renderCalendar();
 }
 
+// ══════════════════════════════════════════════
+// GOOGLE DRIVE 연동
+// ══════════════════════════════════════════════
+const GDRIVE_CLIENT_ID = "1056924939491-b7dvko7jgtneau11evqkgd5lulcoqles.apps.googleusercontent.com";
+const GDRIVE_SCOPES    = "https://www.googleapis.com/auth/drive.appdata";
+const GDRIVE_FILE_NAME = "naju_council_backup.json";
+const GDRIVE_REDIRECT  = location.origin + location.pathname;
+
+let driveAccessToken = null;
+let driveFileId      = null;
+
+// 페이지 로드 시 URL hash에서 access_token 수신 (redirect 방식)
+function initDriveApi(){
+  // URL fragment에 토큰이 있으면 수신 처리
+  const hash = Object.fromEntries(
+    location.hash.replace("#","").split("&").filter(Boolean).map(p=>p.split("="))
+  );
+  if(hash.access_token){
+    driveAccessToken = hash.access_token;
+    history.replaceState(null,"",location.pathname); // hash 제거
+    fetch("https://www.googleapis.com/oauth2/v3/userinfo",{
+      headers:{Authorization:"Bearer "+driveAccessToken}
+    }).then(r=>r.json()).then(u=>{
+      localStorage.setItem("drive_user", JSON.stringify({name:u.name,email:u.email}));
+      setDriveStatus("connected", u.name, u.email);
+      driveAutoSync();
+    }).catch(()=>setDriveStatus("connected"));
+  } else {
+    // 저장된 사용자 정보 있으면 재로그인 안내
+    const saved = localStorage.getItem("drive_user");
+    if(saved){
+      setDriveStatus("login");
+    } else {
+      setDriveStatus("login");
+    }
+  }
+}
+
+function driveSignIn(){
+  // implicit flow redirect — 팝업 없이 현재 탭에서 Google 로그인
+  const params = new URLSearchParams({
+    client_id:     GDRIVE_CLIENT_ID,
+    redirect_uri:  GDRIVE_REDIRECT,
+    response_type: "token",
+    scope:         GDRIVE_SCOPES,
+    include_granted_scopes: "true",
+  });
+  location.href = "https://accounts.google.com/o/oauth2/v2/auth?" + params;
+}
+
+function driveSignOut(){
+  if(driveAccessToken){
+    fetch("https://oauth2.googleapis.com/revoke?token="+driveAccessToken,{method:"POST"}).catch(()=>{});
+  }
+  driveAccessToken = null;
+  driveFileId = null;
+  localStorage.removeItem("drive_user");
+  setDriveStatus("login");
+  showToast("☁️ Google Drive 연결 해제됨");
+}
+
+function setDriveStatus(state, name, email){
+  const dot  = document.getElementById("driveStatusDot");
+  const txt  = document.getElementById("driveStatusText");
+  const info = document.getElementById("driveUserInfo");
+  const loginBtn  = document.getElementById("driveLoginBtn");
+  const logoutBtn = document.getElementById("driveLogoutBtn");
+  const saveBtn   = document.getElementById("driveSaveBtn");
+  const loadBtn   = document.getElementById("driveLoadBtn");
+  if(!dot) return;
+  if(state === "login"){
+    dot.style.background = "#d29922";
+    txt.textContent = "로그인 필요";
+    loginBtn.style.display  = "inline-flex";
+    logoutBtn.style.display = "none";
+    saveBtn.style.display   = "none";
+    loadBtn.style.display   = "none";
+    info.style.display      = "none";
+  } else if(state === "connected"){
+    dot.style.background = "#3fb950";
+    txt.textContent = "연결됨";
+    loginBtn.style.display  = "none";
+    logoutBtn.style.display = "inline-flex";
+    saveBtn.style.display   = "inline-flex";
+    loadBtn.style.display   = "inline-flex";
+    if(name){
+      info.textContent = name + " (" + email + ")";
+      info.style.display = "block";
+    }
+  } else {
+    dot.style.background = "var(--border2)";
+    txt.textContent = "연결 안 됨";
+    loginBtn.style.display  = "none";
+    logoutBtn.style.display = "none";
+    saveBtn.style.display   = "none";
+    loadBtn.style.display   = "none";
+    info.style.display      = "none";
+  }
+}
+
+// Drive appdata에서 파일 ID 찾기
+async function driveFindFile(){
+  const r = await fetch(
+    "https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name='" + GDRIVE_FILE_NAME + "'&fields=files(id,modifiedTime)",
+    { headers: { Authorization: "Bearer " + driveAccessToken } }
+  );
+  const data = await r.json();
+  if(data.files && data.files.length > 0){
+    driveFileId = data.files[0].id;
+    return data.files[0];
+  }
+  return null;
+}
+
+// Drive에 저장
+async function driveSave(){
+  if(!driveAccessToken){ showToast("⚠ 먼저 Google 로그인 해주세요."); return; }
+  try{
+    showToast("☁️ Google Drive에 저장 중...");
+    const payload = JSON.stringify({
+      version:3, savedAt:new Date().toISOString(),
+      app:"나주시의회 의정지원",
+      members:MEMBERS, categories:CATEGORIES, memos
+    });
+    const file = await driveFindFile();
+    let url, method;
+    if(file){
+      url    = "https://www.googleapis.com/upload/drive/v3/files/" + driveFileId + "?uploadType=multipart";
+      method = "PATCH";
+    } else {
+      url    = "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart";
+      method = "POST";
+    }
+    const meta = JSON.stringify({ name: GDRIVE_FILE_NAME, parents: file ? undefined : ["appDataFolder"] });
+    const form = new FormData();
+    form.append("metadata", new Blob([meta], {type:"application/json"}));
+    form.append("file",     new Blob([payload], {type:"application/json"}));
+    const res = await fetch(url, {
+      method,
+      headers: { Authorization: "Bearer " + driveAccessToken },
+      body: form
+    });
+    if(!res.ok) throw new Error(await res.text());
+    const now = new Date().toLocaleString("ko-KR");
+    localStorage.setItem("drive_last_save", now);
+    document.getElementById("driveSyncInfo").textContent = "마지막 저장: " + now;
+    showToast("✅ Google Drive 저장 완료");
+  } catch(e){
+    showToast("⚠ 저장 실패: " + e.message);
+  }
+}
+
+// Drive에서 불러오기
+async function driveLoad(){
+  if(!driveAccessToken){ showToast("⚠ 먼저 Google 로그인 해주세요."); return; }
+  try{
+    showToast("☁️ Google Drive에서 불러오는 중...");
+    const file = await driveFindFile();
+    if(!file){ showToast("ℹ Drive에 저장된 백업이 없습니다."); return; }
+    const r = await fetch(
+      "https://www.googleapis.com/drive/v3/files/" + driveFileId + "?alt=media",
+      { headers: { Authorization: "Bearer " + driveAccessToken } }
+    );
+    const data = await r.json();
+    if(!data.memos){ showToast("⚠ 올바른 백업 파일이 아닙니다."); return; }
+    const ok5 = await appConfirm("Google Drive 백업으로 덮어쓸까요?\n메모 " + data.memos.length + "건", "⬇ 복원", true);
+    if(!ok5) return;
+    if(data.members)    MEMBERS.splice(0, MEMBERS.length, ...data.members);
+    if(data.categories) CATEGORIES.splice(0, CATEGORIES.length, ...data.categories);
+    if(data.memos)      memos.splice(0, memos.length, ...data.memos);
+    save.all();
+    renderHome(); renderDrawer();
+    showToast("✅ Google Drive에서 복원 완료 — " + memos.length + "건");
+  } catch(e){
+    showToast("⚠ 불러오기 실패: " + e.message);
+  }
+}
+
+// 앱 실행 시 자동 동기화 시도
+function driveAutoSync(){
+  if(!driveAccessToken) return;
+  driveFindFile().then(file=>{
+    if(!file) return;
+    // Drive 파일이 로컬보다 최신이면 자동 복원
+    const lastSave = localStorage.getItem("drive_last_save");
+    if(!lastSave){
+      showToast("☁️ Drive 백업 발견 — 불러오기 버튼으로 복원하세요");
+      return;
+    }
+    const driveTime = new Date(file.modifiedTime).getTime();
+    const localTime = new Date(lastSave).getTime();
+    if(driveTime > localTime + 60000){
+      showToast("☁️ Drive에 최신 백업 있음 — 불러오기 버튼 확인");
+    } else {
+      // 로컬이 최신 → 자동 저장
+      driveSave();
+    }
+  });
+}
+
+// ══════════════════════════════════════════════
+// CUSTOM CONFIRM (WebView confirm() 차단 대응)
+// ══════════════════════════════════════════════
+let _confirmResolve = null;
+function appConfirm(msg, okLabel="확인", danger=true){
+  return new Promise(res=>{
+    _confirmResolve = res;
+    document.getElementById("confirmMsg").textContent = msg;
+    const okBtn = document.getElementById("confirmOkBtn");
+    okBtn.textContent = okLabel;
+    okBtn.style.background = danger ? "var(--red)" : "var(--accent)";
+    const ov = document.getElementById("confirmOverlay");
+    ov.style.display = "flex";
+  });
+}
+function confirmResolve(result){
+  document.getElementById("confirmOverlay").style.display = "none";
+  if(_confirmResolve){ _confirmResolve(result); _confirmResolve = null; }
+}
+
+
 init();
+initDriveApi();
 </script>
 </body>
 </html>
